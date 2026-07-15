@@ -1,0 +1,16 @@
+# local Claude Code settings (contains machine-specific absolute paths)
+.claude/
+
+# build products - rebuild with ./build_app.sh and ./build_*.sh
+*.app/
+AppIcon.iconset/
+
+# compiled helper binary - rebuild with: swiftc -O sensors.swift -o sensors
+sensors
+
+# macOS noise
+.DS_Store
+
+# python
+__pycache__/
+*.pyc

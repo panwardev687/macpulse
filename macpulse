@@ -1,0 +1,3 @@
+#!/bin/zsh
+# macpulse launcher - run from anywhere
+exec python3 "$(dirname "$0:A")/macpulse.py" "$@"
