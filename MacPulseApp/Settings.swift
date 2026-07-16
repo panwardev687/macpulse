@@ -199,7 +199,7 @@ struct SettingsView: View {
             }
 
             Section("About") {
-                LabeledContent("Version", value: "1.0")
+                LabeledContent("Version", value: "1.1")
                 LabeledContent("Status colors") {
                     Text("Temp: green ≤ 45° · yellow 65° · orange 80° · red ≥ 95°C. Memory follows macOS pressure.")
                         .foregroundStyle(.secondary)

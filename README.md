@@ -22,6 +22,7 @@ MacPulse is a free alternative to paid Mac cleaner and monitoring apps. It combi
 | Tool | What it does |
 |---|---|
 | **Dashboard** | Live CPU, battery, and SSD temperature from real sensors (no sudo needed), thermal pressure, memory and swap usage, disk space, and the apps using the most memory with one-click Quit. |
+| **Disk Map** | Interactive sunburst chart of what's eating your disk (like DaisyDisk). Click a segment to zoom in, click the center to go back up, trash things straight from the map. |
 | **Clean Storage** | Reclaims "System Data" bloat: app caches, logs, developer caches (Xcode DerivedData, npm), Trash, old iOS backups, and Time Machine local snapshots. Whitelist-only - it never touches paths it doesn't recognize. |
 | **Duplicates & Large Files** | Finds duplicate files by content (size + SHA-256) and lists your 100 largest files with last-opened dates. Preview anything with Quick Look (Space bar, arrow keys) before deleting. |
 | **Uninstall Apps** | Deletes an app AND its leftovers: Application Support, Caches, Preferences, Containers, LaunchAgents. Drag, drop, review, done. |
@@ -38,6 +39,7 @@ Every deletion flow is safety-first: confirmation dialogs, Trash instead of perm
 | Price | Free | $40/yr | Free | Free | Free |
 | Open source | Yes | No | Yes | No | No |
 | Storage cleaning | Yes | Yes | No | No | Yes |
+| Disk space map (sunburst) | Yes | Yes | No | No | No |
 | Temperature / memory monitor | Yes | Menu bar | Yes | No | No |
 | Duplicate finder | Yes | Paid extra | No | No | No |
 | Full app uninstaller | Yes | Yes | No | Yes | No |
@@ -76,6 +78,10 @@ System Data grows because macOS and your apps cache aggressively: browser caches
 
 Indirectly, yes. Files sitting on disk don't slow a Mac down, but a nearly full disk does: macOS wants 10-15% free space for swap and snapshots. If your disk is over 85% full, freeing 20-30 GB gives a real, measurable improvement. MacPulse shows a warning when you cross that threshold.
 
+### How do I see what is taking up space on my Mac?
+
+Open MacPulse's Disk Map pane and scan your home folder (or any folder). It draws an interactive sunburst chart where every arc is sized by how much space it uses: bigger arc, bigger folder. Click a segment to zoom into that folder, click the center to go back up, and move anything to the Trash directly from the map.
+
 ### How do I completely uninstall an app on macOS?
 
 Dragging an app to the Trash leaves behind its Application Support folders, caches, preferences, and launch agents. MacPulse's Uninstall pane finds all of them by bundle ID, shows each with its size, and moves everything to the Trash so it stays recoverable.
@@ -105,6 +111,7 @@ MacPulseApp/          <- the unified app (start here)
   Main.swift            app shell + sidebar navigation
   StatusBar.swift       menu bar widget + app delegate
   DashboardView.swift   live system overview
+  DiskMapView.swift     interactive disk space sunburst
   CleanView.swift       storage cleaner
   FilesView.swift       duplicates & large files + Quick Look
   UninstallView.swift   app uninstaller

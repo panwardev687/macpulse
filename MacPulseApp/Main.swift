@@ -6,12 +6,13 @@
 import SwiftUI
 
 enum Pane: String, CaseIterable, Identifiable {
-    case dashboard, clean, files, uninstall, startup, shots, settings
+    case dashboard, diskmap, clean, files, uninstall, startup, shots, settings
 
     var id: String { rawValue }
     var title: String {
         switch self {
         case .dashboard: return "Dashboard"
+        case .diskmap: return "Disk Map"
         case .clean: return "Clean Storage"
         case .files: return "Duplicates & Large Files"
         case .uninstall: return "Uninstall Apps"
@@ -23,6 +24,7 @@ enum Pane: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .dashboard: return "gauge.with.needle"
+        case .diskmap: return "chart.pie"
         case .clean: return "sparkles"
         case .files: return "doc.on.doc"
         case .uninstall: return "trash"
@@ -36,6 +38,7 @@ enum Pane: String, CaseIterable, Identifiable {
 struct MainView: View {
     @State private var pane: Pane? = .dashboard
     @StateObject private var dashboard = DashboardModel()
+    @StateObject private var diskmap = DiskMapModel()
     @StateObject private var clean = CleanModel()
     @StateObject private var files = FilesModel()
     @StateObject private var uninstall = UninstallModel()
@@ -50,6 +53,7 @@ struct MainView: View {
         } detail: {
             switch pane ?? .dashboard {
             case .dashboard: DashboardView(model: dashboard)
+            case .diskmap: DiskMapView(model: diskmap)
             case .clean: CleanView(model: clean)
             case .files: FilesView(model: files)
             case .uninstall: UninstallView(model: uninstall)
