@@ -138,6 +138,10 @@ The repo also contains the original standalone single-purpose apps (each is a co
 
 Issues and PRs welcome. The codebase is intentionally simple: one view file per pane, models are plain `ObservableObject`s, helpers live in `Shared.swift`. Build with `./build_app.sh`, no other tooling required.
 
+## More free Mac tools
+
+- [DeskPulse](https://github.com/panwardev687/deskpulse) - clipboard history, text snippets, and a file converter (HEIC to JPG, audio) in one 1 MB app. Free alternative to Paste, TextExpander, and Permute.
+
 ## Support
 
 If MacPulse keeps your Mac cool, fast, and tidy, consider [sponsoring development](https://github.com/sponsors/panwardev687).
