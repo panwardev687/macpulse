@@ -140,7 +140,7 @@ Issues and PRs welcome. The codebase is intentionally simple: one view file per 
 
 ## More free Mac tools
 
-- [DeskPulse](https://github.com/panwardev687/deskpulse) - clipboard history, text snippets, and a file converter (HEIC to JPG, audio) in one 1 MB app. Free alternative to Paste, TextExpander, and Permute.
+- [DeskPulse](https://github.com/panwardev687/deskpulse) - clipboard history, text snippets, and file conversion (PDF to Word, HEIC to JPG, image compression, audio) in one 2 MB app. Free alternative to Paste, TextExpander, and Permute.
 
 ## Support
 
