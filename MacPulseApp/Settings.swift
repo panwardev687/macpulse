@@ -62,7 +62,22 @@ final class SettingsModel: ObservableObject {
     @Published var refreshInterval: Double {
         didSet { d.set(refreshInterval, forKey: "widget.refresh") }
     }
+    @Published var hideDock: Bool {
+        didSet {
+            d.set(hideDock, forKey: "general.hideDock")
+            SettingsModel.applyDockPolicy(hidden: hideDock)
+        }
+    }
     @Published var launchError: String? = nil
+
+    /// Accessory apps have no Dock icon and no Cmd-Tab entry; the menu bar
+    /// item stays. Reactivate after switching so an open window stays usable.
+    static func applyDockPolicy(hidden: Bool) {
+        NSApp.setActivationPolicy(hidden ? .accessory : .regular)
+        if NSApp.windows.contains(where: { $0.isVisible && !($0 is NSPanel) }) {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
 
     private init() {
         showTemp = d.object(forKey: "widget.showTemp") as? Bool ?? true
@@ -73,6 +88,7 @@ final class SettingsModel: ObservableObject {
         tempUnit = TempUnit(rawValue: d.string(forKey: "units.temp") ?? "") ?? .celsius
         let r = d.double(forKey: "widget.refresh")
         refreshInterval = r >= 1 ? r : 5
+        hideDock = d.bool(forKey: "general.hideDock")
     }
 
     /// Resolve the menu bar color for a value whose natural "status" color is given.
@@ -163,7 +179,10 @@ struct SettingsView: View {
                 if let err = settings.launchError {
                     Text(err).font(.system(size: 11)).foregroundStyle(.orange)
                 }
-                Text("MacPulse stays in the menu bar when the window is closed. Quit it from the menu bar popover.")
+                Toggle("Hide Dock icon (menu bar only)", isOn: $settings.hideDock)
+                Text(settings.hideDock
+                     ? "MacPulse is hidden from the Dock and Cmd-Tab. Open this window anytime via the menu bar widget's Open MacPulse button."
+                     : "MacPulse stays in the menu bar when the window is closed. Quit it from the menu bar widget.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
 

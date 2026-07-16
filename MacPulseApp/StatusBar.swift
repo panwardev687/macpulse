@@ -37,6 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
         _ = ShotsModel.shared   // start the screenshot organizer engine
 
+        if settings.hideDock {
+            NSApp.setActivationPolicy(.accessory)
+        }
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.action = #selector(togglePanel)
         statusItem.button?.target = self
