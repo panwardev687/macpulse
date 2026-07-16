@@ -1,34 +1,47 @@
-// StatusBar.swift - the combined menu bar presence: CPU temperature tinted by
-// heat + used memory tinted by pressure, refreshed every 5 s. Click for a
-// glass popover with quick stats and an "Open MacPulse" button. Also hosts the
-// app delegate that keeps MacPulse alive in the menu bar when the window closes
-// and starts the background screenshot organizer.
+// StatusBar.swift - the menu bar presence: CPU temperature + memory next to
+// the clock (content and colors follow Settings), and the click-down panel in
+// the original MacPulse Temp widget design: big colored temperature,
+// thermal state, battery and SSD rows, one Open MacPulse button.
+//
+// The panel is a non-activating NSPanel rather than an NSPopover on purpose:
+// it opens instantly even while another app is frontmost (popovers wait for
+// app activation, which felt broken), it never yanks the main MacPulse window
+// forward, and it closes as soon as you click anywhere else on screen.
+// Also hosts the app delegate that keeps MacPulse alive in the menu bar when
+// the window closes and starts the background screenshot organizer.
 
 import AppKit
 import Combine
 
+/// Borderless panels can't become key by default; the panel must be key so
+/// its buttons respond to the first click.
+final class WidgetPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
-    let popover = NSPopover()
+    var panel: WidgetPanel!
     let settings = SettingsModel.shared
     private var timer: Timer?
     private var cancellable: AnyCancellable?
+    private var globalClickMonitor: Any?
+    private var localClickMonitor: Any?
 
-    let tempRow = NSTextField(labelWithString: "–")
-    let memRow = NSTextField(labelWithString: "–")
-    let diskRow = NSTextField(labelWithString: "–")
-    let shotsRow = NSTextField(labelWithString: "")
+    // panel labels (original temp-widget design)
+    let bigTemp = NSTextField(labelWithString: "–")
+    let subtitle = NSTextField(labelWithString: "")
+    let batteryRow = NSTextField(labelWithString: "")
+    let ssdRow = NSTextField(labelWithString: "")
 
     func applicationDidFinishLaunching(_ note: Notification) {
         _ = ShotsModel.shared   // start the screenshot organizer engine
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.action = #selector(togglePopover)
+        statusItem.button?.action = #selector(togglePanel)
         statusItem.button?.target = self
 
-        popover.behavior = .transient
-        popover.contentViewController = makePanel()
-
+        buildPanel()
         update()
         reschedule()
         // settings changes apply live: recolor immediately, adopt new interval
@@ -58,23 +71,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    func makePanel() -> NSViewController {
-        let vc = NSViewController()
-        let glass = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 240, height: 190))
+    // MARK: - Panel (original MacPulse Temp design)
+
+    func buildPanel() {
+        let glass = NSVisualEffectView()
         glass.material = .popover
         glass.blendingMode = .behindWindow
         glass.state = .active
+        glass.wantsLayer = true
+        glass.layer?.cornerRadius = 14
+        glass.layer?.masksToBounds = true
 
-        let title = NSTextField(labelWithString: "MacPulse")
-        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        bigTemp.font = .monospacedDigitSystemFont(ofSize: 42, weight: .semibold)
+        bigTemp.alignment = .center
 
-        for row in [tempRow, memRow, diskRow, shotsRow] {
+        subtitle.font = .systemFont(ofSize: 12, weight: .medium)
+        subtitle.textColor = .secondaryLabelColor
+        subtitle.alignment = .center
+
+        for row in [batteryRow, ssdRow] {
             row.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
             row.textColor = .secondaryLabelColor
+            row.alignment = .center
         }
 
         let open = NSButton(title: "Open MacPulse", target: self, action: #selector(openMainAction))
         open.bezelStyle = .rounded
+        open.controlSize = .regular
         open.keyEquivalent = "\r"
         if let icon = NSImage(systemSymbolName: "gauge.with.needle", accessibilityDescription: nil) {
             open.image = icon
@@ -87,14 +110,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quit.controlSize = .small
         quit.font = .systemFont(ofSize: 11)
 
-        let stack = NSStackView(views: [title, tempRow, memRow, diskRow, shotsRow, open, quit])
+        let stack = NSStackView(views: [bigTemp, subtitle, batteryRow, ssdRow, open, quit])
         stack.orientation = .vertical
-        stack.spacing = 5
-        stack.alignment = .leading
-        stack.setCustomSpacing(10, after: title)
-        stack.setCustomSpacing(12, after: shotsRow)
+        stack.spacing = 4
+        stack.setCustomSpacing(2, after: bigTemp)
+        stack.setCustomSpacing(12, after: ssdRow)
         stack.setCustomSpacing(8, after: open)
-        stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 12, right: 16)
+        stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         glass.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -103,9 +125,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             stack.leadingAnchor.constraint(equalTo: glass.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: glass.trailingAnchor),
         ])
-        vc.view = glass
-        return vc
+
+        panel = WidgetPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 230, height: 170),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered, defer: false)
+        panel.isFloatingPanel = true
+        panel.level = .statusBar
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.isMovable = false
+        panel.isReleasedWhenClosed = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.contentView = glass
     }
+
+    @objc func togglePanel() {
+        if panel.isVisible { closePanel() } else { showPanel() }
+    }
+
+    func showPanel() {
+        update()
+        // center under the status item, clamped to the screen edge
+        if let btnWin = statusItem.button?.window {
+            let btnFrame = btnWin.frame
+            var x = btnFrame.midX - panel.frame.width / 2
+            if let screen = btnWin.screen {
+                x = min(max(x, screen.visibleFrame.minX + 8),
+                        screen.visibleFrame.maxX - panel.frame.width - 8)
+            }
+            let y = btnFrame.minY - panel.frame.height - 6
+            panel.setFrameOrigin(NSPoint(x: x, y: y))
+        }
+        panel.makeKeyAndOrderFront(nil)
+
+        // click anywhere outside -> close. Global monitor covers clicks in
+        // other apps and the desktop; the local one covers our own windows.
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] _ in
+            self?.closePanel()
+        }
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            guard let self else { return event }
+            if event.window !== self.panel,
+               event.window !== self.statusItem.button?.window {
+                self.closePanel()
+            }
+            return event
+        }
+    }
+
+    func closePanel() {
+        panel.orderOut(nil)
+        if let m = globalClickMonitor { NSEvent.removeMonitor(m); globalClickMonitor = nil }
+        if let m = localClickMonitor { NSEvent.removeMonitor(m); localClickMonitor = nil }
+    }
+
+    // MARK: - Menu bar title
 
     private func glyph(_ symbol: String, _ color: NSColor) -> NSAttributedString {
         let attr = NSMutableAttributedString()
@@ -131,9 +211,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func update() {
         let temps = readTemperatures()
         let mem = readMemStats()
-        let disk = readDiskStats()
 
-        // menu bar: 🌡48° ▦12.3G - content and coloring follow Settings
+        // menu bar: content and coloring follow Settings
         let attr = NSMutableAttributedString()
         if settings.showTemp, let cpu = temps.cpuMax {
             let tColor = settings.widgetColor(status: temperatureColor(cpu))
@@ -147,30 +226,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             attr.append(value(gb(mem.used), mColor))
         }
         if attr.length == 0 {
-            // both hidden - keep a plain gauge so the popover stays reachable
+            // both hidden - keep a plain gauge so the panel stays reachable
             attr.append(glyph("gauge.with.needle", .labelColor))
         }
         statusItem.button?.attributedTitle = attr
 
-        // popover rows always use status colors - they carry meaning here
+        // panel: the original temp-widget layout, always status-colored
         if let cpu = temps.cpuMax {
-            tempRow.stringValue = "CPU  \(fmtTemp(cpu, decimals: 1)) · \(thermalStateName())"
-            tempRow.textColor = temperatureColor(cpu)
+            bigTemp.stringValue = fmtTemp(cpu, decimals: 1)
+            bigTemp.textColor = temperatureColor(cpu)
         } else {
-            tempRow.stringValue = "CPU  – (sensors unavailable)"
+            bigTemp.stringValue = "–"
+            bigTemp.textColor = .labelColor
         }
-        memRow.stringValue = "Memory  \(gb(mem.used)) / \(gb(mem.total)) · \(pressureName(mem.pressureLevel))"
-        memRow.textColor = pressureColor(mem.pressureLevel)
-        diskRow.stringValue = "Disk  \(fmtBytes(disk.free)) free"
-        diskRow.textColor = disk.usedFraction > 0.85 ? .systemOrange : .secondaryLabelColor
-        let shots = ShotsModel.shared
-        shotsRow.stringValue = shots.paused
-            ? "Screenshots  paused"
-            : "Screenshots  \(shots.movedCount) filed"
+        subtitle.stringValue = "CPU · Thermal \(thermalStateName())"
+        batteryRow.stringValue = temps.battery.map { "Battery  " + fmtTemp($0) } ?? ""
+        ssdRow.stringValue = temps.ssd.map { "SSD  " + fmtTemp($0) } ?? ""
     }
 
+    // MARK: - Window
+
     @objc func openMainAction() {
-        popover.performClose(nil)
+        closePanel()
         openMain()
     }
 
@@ -179,15 +256,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for window in NSApp.windows
         where window.canBecomeMain && !(window is NSPanel) {
             window.makeKeyAndOrderFront(nil)
-        }
-    }
-
-    @objc func togglePopover() {
-        if popover.isShown {
-            popover.performClose(nil)
-        } else if let button = statusItem.button {
-            update()
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
     }
 }
