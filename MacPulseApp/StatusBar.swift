@@ -11,6 +11,7 @@
 // the window closes and starts the background screenshot organizer.
 
 import AppKit
+import SwiftUI
 import Combine
 
 /// Borderless panels can't become key by default; the panel must be key so
@@ -22,6 +23,7 @@ final class WidgetPanel: NSPanel {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var panel: WidgetPanel!
+    var mainWindow: NSWindow?
     let settings = SettingsModel.shared
     private var timer: Timer?
     private var cancellable: AnyCancellable?
@@ -37,9 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
         _ = ShotsModel.shared   // start the screenshot organizer engine
 
-        if settings.hideDock {
-            NSApp.setActivationPolicy(.accessory)
-        }
+        NSApp.setActivationPolicy(settings.hideDock ? .accessory : .regular)
+        buildMenu()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.action = #selector(togglePanel)
@@ -55,6 +56,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.reschedule()
             }
         }
+
+        // menu-bar-only users get just the widget; everyone else gets the window
+        if !settings.hideDock {
+            openMain()
+        }
+    }
+
+    /// Minimal standard menu bar. Without the SwiftUI App lifecycle this must
+    /// be built by hand or Cmd+Q, Cmd+C/V, and Cmd+W stop working.
+    func buildMenu() {
+        let main = NSMenu()
+
+        let appItem = NSMenuItem()
+        main.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About MacPulse",
+                        action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+                        keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide MacPulse",
+                        action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit MacPulse",
+                        action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+
+        let editItem = NSMenuItem()
+        main.addItem(editItem)
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)),
+                     keyEquivalent: "a")
+        editItem.submenu = edit
+
+        let winItem = NSMenuItem()
+        main.addItem(winItem)
+        let winMenu = NSMenu(title: "Window")
+        winMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)),
+                        keyEquivalent: "w")
+        winMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)),
+                        keyEquivalent: "m")
+        winItem.submenu = winMenu
+
+        NSApp.mainMenu = main
+        NSApp.windowsMenu = winMenu
     }
 
     func reschedule() {
@@ -255,11 +306,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openMain()
     }
 
+    /// The main window is created once and kept alive: closing it only hides
+    /// it (isReleasedWhenClosed = false + our strong reference), so this
+    /// always has a window to bring back, and pane state survives closing.
     func openMain() {
-        NSApp.activate(ignoringOtherApps: true)
-        for window in NSApp.windows
-        where window.canBecomeMain && !(window is NSPanel) {
-            window.makeKeyAndOrderFront(nil)
+        if mainWindow == nil {
+            let host = NSHostingController(rootView: MainView())
+            let win = NSWindow(contentViewController: host)
+            win.title = "MacPulse"
+            win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            win.setContentSize(NSSize(width: 1000, height: 640))
+            win.isReleasedWhenClosed = false
+            win.setFrameAutosaveName("MacPulseMain")
+            win.center()
+            mainWindow = win
         }
+        NSApp.activate(ignoringOtherApps: true)
+        mainWindow?.makeKeyAndOrderFront(nil)
     }
 }

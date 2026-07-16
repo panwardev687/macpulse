@@ -67,13 +67,19 @@ struct MainView: View {
     }
 }
 
+// AppKit-driven entry point. The main window is created and retained by
+// AppDelegate (see StatusBar.swift) instead of a SwiftUI WindowGroup: SwiftUI
+// destroys a WindowGroup window when it closes, which left the menu bar
+// panel's "Open MacPulse" button with nothing to reopen. Owning the window
+// means closing it just hides it, and reopening restores it with all pane
+// state (scans, disk map) intact.
 @main
-struct MacPulseApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
+struct MacPulseMain {
+    static let delegate = AppDelegate()   // NSApplication.delegate is weak
 
-    var body: some Scene {
-        WindowGroup("MacPulse") {
-            MainView()
-        }
+    static func main() {
+        let app = NSApplication.shared
+        app.delegate = delegate
+        app.run()
     }
 }
