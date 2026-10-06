@@ -35,7 +35,10 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 </plist>
 EOF
 
-swiftc -O -parse-as-library MacPulseApp/*.swift -o "$APP/Contents/MacOS/MacPulse"
+# pin the deployment target: swiftc otherwise defaults to the build machine's
+# OS (or newer), and LaunchServices refuses to open the app on anything older
+swiftc -O -parse-as-library -target arm64-apple-macos13.0 \
+    MacPulseApp/*.swift -o "$APP/Contents/MacOS/MacPulse"
 codesign --force --sign - "$APP"
 echo "built: $APP"
 echo "run:   open '$PWD/$APP'"

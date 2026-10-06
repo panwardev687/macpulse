@@ -6,7 +6,8 @@
 // The panel is a non-activating NSPanel rather than an NSPopover on purpose:
 // it opens instantly even while another app is frontmost (popovers wait for
 // app activation, which felt broken), it never yanks the main MacPulse window
-// forward, and it closes as soon as you click anywhere else on screen.
+// forward, and it closes on any outside click, loss of focus, Escape, app
+// switch, or Space change.
 // Also hosts the app delegate that keeps MacPulse alive in the menu bar when
 // the window closes and starts the background screenshot organizer.
 
@@ -17,10 +18,12 @@ import Combine
 /// Borderless panels can't become key by default; the panel must be key so
 /// its buttons respond to the first click.
 final class WidgetPanel: NSPanel {
+    var onEscape: (() -> Void)?
     override var canBecomeKey: Bool { true }
+    override func cancelOperation(_ sender: Any?) { onEscape?() }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusItem: NSStatusItem!
     var panel: WidgetPanel!
     var mainWindow: NSWindow?
@@ -29,6 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellable: AnyCancellable?
     private var globalClickMonitor: Any?
     private var localClickMonitor: Any?
+    private var workspaceObservers: [NSObjectProtocol] = []
+    // set when the panel closes itself, so the status item click that caused
+    // it doesn't immediately reopen the panel
+    private var lastAutoClose = Date.distantPast
 
     // panel labels (original temp-widget design)
     let bigTemp = NSTextField(labelWithString: "–")
@@ -194,10 +201,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = glass
+        panel.delegate = self
+        panel.onEscape = { [weak self] in self?.closePanel() }
     }
 
     @objc func togglePanel() {
-        if panel.isVisible { closePanel() } else { showPanel() }
+        if panel.isVisible {
+            closePanel()
+        } else if Date().timeIntervalSince(lastAutoClose) > 0.3 {
+            showPanel()
+        }
+    }
+
+    // clicking another app, the desktop, or our own main window takes key
+    // focus away from the panel
+    func windowDidResignKey(_ note: Notification) {
+        guard (note.object as? NSWindow) === panel, panel.isVisible else { return }
+        autoClose()
+    }
+
+    private func autoClose() {
+        guard panel.isVisible else { return }
+        lastAutoClose = Date()
+        closePanel()
     }
 
     func showPanel() {
@@ -215,29 +241,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         panel.makeKeyAndOrderFront(nil)
 
+        removeDismissWatchers()
         // click anywhere outside -> close. Global monitor covers clicks in
         // other apps and the desktop; the local one covers our own windows.
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown]
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         ) { [weak self] _ in
-            self?.closePanel()
+            self?.autoClose()
         }
         localClickMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown]
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         ) { [weak self] event in
             guard let self else { return event }
             if event.window !== self.panel,
                event.window !== self.statusItem.button?.window {
-                self.closePanel()
+                self.autoClose()
             }
             return event
+        }
+        // keyboard app switching (Cmd+Tab) and Space/Mission Control changes
+        // involve no click at all
+        let ws = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didActivateApplicationNotification,
+                     NSWorkspace.activeSpaceDidChangeNotification] {
+            workspaceObservers.append(ws.addObserver(forName: name, object: nil, queue: .main) {
+                [weak self] _ in self?.autoClose()
+            })
         }
     }
 
     func closePanel() {
         panel.orderOut(nil)
+        removeDismissWatchers()
+    }
+
+    private func removeDismissWatchers() {
         if let m = globalClickMonitor { NSEvent.removeMonitor(m); globalClickMonitor = nil }
         if let m = localClickMonitor { NSEvent.removeMonitor(m); localClickMonitor = nil }
+        let ws = NSWorkspace.shared.notificationCenter
+        workspaceObservers.forEach { ws.removeObserver($0) }
+        workspaceObservers.removeAll()
     }
 
     // MARK: - Menu bar title
